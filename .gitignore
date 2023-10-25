@@ -1,0 +1,8 @@
+/node_modules/
+
+# Project exclude paths
+/lib/Extensions.js
+/lib/SocketController.js
+/lib/SocketSession.js
+/lib/TypeUtil.js
+/lib/Utils.js

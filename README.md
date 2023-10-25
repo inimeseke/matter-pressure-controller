@@ -1,4 +1,4 @@
-# edit-qd-script
+# MATTER-pressure-controller
 
 This program makes it easier to use MATTER pressure controllers.
 

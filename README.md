@@ -1,12 +1,12 @@
-# edit-qd-script
+# MATTER-pressure-controller
 
-This program makes it easier to use GETELEC.
+This program makes it easier to use MATTER pressure controllers.
 
 # Description
 
 Start the application.
-Enter your data.
-Press the load button.
+Click the relevant link.
+Control the pressure and do experiments.
 
 # Prerequisites
 

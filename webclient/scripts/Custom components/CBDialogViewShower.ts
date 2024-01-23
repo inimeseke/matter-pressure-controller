@@ -5,9 +5,6 @@
 /// <reference path="../Custom components/LanguageService.ts" />
 
 
-
-
-
 class CBDialogViewShower extends UIObject {
     
     dialogView: UIDialogView<CBDialogView>
@@ -74,9 +71,6 @@ class CBDialogViewShower extends UIObject {
     }
     
     
-    
-    
-    
     getDialogWidth() {
         
         const padding = RootViewController.paddingLength
@@ -87,7 +81,10 @@ class CBDialogViewShower extends UIObject {
         
         const width = this.dialogView.view.titleLabel.intrinsicContentWidth() + padding * 2
         
-        result = Math.max(result, this.dialogView.view.view.intrinsicContentWidth(this.dialogView.view.view.viewHTMLElement.naturalHeight || 1000000000))
+        result = Math.max(
+            result,
+            this.dialogView.view.view.intrinsicContentWidth(this.dialogView.view.view.viewHTMLElement.naturalHeight || 1000000000)
+        )
         
         result = Math.max(result, width)
         
@@ -101,18 +98,15 @@ class CBDialogViewShower extends UIObject {
         return result
         
         
-        
     }
     
     
     yesButtonWasPressed() {
         
         
-        
     }
     
     noButtonWasPressed() {
-        
         
         
     }
@@ -121,55 +115,33 @@ class CBDialogViewShower extends UIObject {
     cancelButtonWasPressed() {
         
         
-        
     }
-    
-    
-    
     
     
     showQuestionDialogInRootView(titleTextObject?: CBLocalizedTextObject, questionTextObject?: CBLocalizedTextObject) {
         
-        
         this.dialogView.view.initTitleLabelIfNeeded()
-        
         this.dialogView.view.titleLabel.localizedTextObject = titleTextObject
-        
-        
-        
         this.dialogView.view.initQuestionLabelIfNeeded()
-        
         if (IS(questionTextObject)) {
-            
             this.dialogView.view.questionLabel.localizedTextObject = questionTextObject
-            
         }
         
-        
         this.dialogView.view.initYesNoButtonsIfNeeded()
-        
         
         this.dialogView.view.noButton.addTargetForControlEvents([
             UIButton.controlEvent.EnterDown, UIButton.controlEvent.PointerUpInside
         ], function (this: CBDialogViewShower, sender: UIButton, event: Event) {
-            
             this.noButtonWasPressed()
-            
-            
         }.bind(this))
         
         this.dialogView.view.yesButton.addTargetForControlEvents([
             UIButton.controlEvent.EnterDown, UIButton.controlEvent.PointerUpInside
         ], function (this: CBDialogViewShower, sender: UIButton, event: Event) {
-            
             this.yesButtonWasPressed()
-            
-            
         }.bind(this))
         
-        
         this.dialogView.showInRootView(YES)
-        
         
     }
     
@@ -225,9 +197,6 @@ class CBDialogViewShower extends UIObject {
         
         
     }
-    
-    
-    
     
     
     showImageDialogInRootView(imageURL: string, deleteImageCallback?: Function) {
@@ -311,8 +280,6 @@ class CBDialogViewShower extends UIObject {
         }
         
         
-        
-        
         this.dialogView.showInRootView(YES)
         
         this.dialogView.view.cancelButton.focus()
@@ -321,7 +288,6 @@ class CBDialogViewShower extends UIObject {
     }
     
     showActionIndicatorDialogInRootView(message: string) {
-        
         
         
         const actionIndicator = new UIActionIndicator()
@@ -345,11 +311,7 @@ class CBDialogViewShower extends UIObject {
         this.dialogView.view.questionLabel.textColor = UIColor.whiteColor
         
         
-        
         this.dialogView.dismissesOnTapOutside = NO
-        
-        
-        
         
         
         CBDialogViewShower.currentActionIndicatorDialogViewShower = this
@@ -363,16 +325,12 @@ class CBDialogViewShower extends UIObject {
     }
     
     
-    
-    
-    
     static showNextDialog() {
         
         (CBDialogViewShower.nextShowDialogFunctions.firstElement || nil)()
         CBDialogViewShower.nextShowDialogFunctions.removeElementAtIndex(0)
         
     }
-    
     
     
     static alert(text: string, dismissCallback: Function = nil) {
@@ -383,7 +341,6 @@ class CBDialogViewShower extends UIObject {
         CBDialogViewShower._showDialogWithFunction(showDialogFunction, dialogShower)
         
     }
-    
     
     
     static localizedAlert(textObject: CBLocalizedTextObject, dismissCallback: Function = nil) {
@@ -428,9 +385,9 @@ class CBDialogViewShower extends UIObject {
         const dialogShower = CBDialogViewShower._dialogShowerWithDismissCallback(dismissCallback)
         const showDialogFunction = dialogShower.showDialogInRootView.bind(dialogShower, view)
         CBDialogViewShower._showDialogWithFunction(showDialogFunction, dialogShower)
-    
-        return dialogShower;
-    
+        
+        return dialogShower
+        
     }
     
     static showActionIndicatorDialog(message: string, dismissCallback: Function = nil) {
@@ -467,7 +424,6 @@ class CBDialogViewShower extends UIObject {
     }
     
     
-    
     private static _dialogShowerWithDismissCallback(dismissCallback: Function) {
         
         const dialogShower = new CBDialogViewShower()
@@ -500,8 +456,6 @@ class CBDialogViewShower extends UIObject {
         }
         
     }
-    
-    
     
     
 }

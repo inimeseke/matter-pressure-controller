@@ -9,7 +9,6 @@ class EnterNumericalValueView extends UIView {
     _previousNumericalValue: number
     
     
-    
     constructor(elementID?: string) {
         
         super(elementID)
@@ -19,18 +18,12 @@ class EnterNumericalValueView extends UIView {
         this.superclass = UIView
         
         
-        
-        
     }
-    
-    
-    
     
     
     initView(elementID: string, viewHTMLElement: HTMLElement, initViewData) {
         
         super.initView(elementID, viewHTMLElement, initViewData)
-        
         
         
         this.minusButton = new CBFlatButton(elementID + "MinusButton")
@@ -44,10 +37,7 @@ class EnterNumericalValueView extends UIView {
         this.plusButton.titleLabel.text = "+"
         
         
-        
         this.addSubviews([this.minusButton, this.textField, this.plusButton])
-        
-        
         
         
         this.minusButton.addTargetForControlEvents([
@@ -67,14 +57,63 @@ class EnterNumericalValueView extends UIView {
         }.bind(this))
         
         
+        this.textField.addTargetForControlEvent(
+            UITextField.controlEvent.EscDown,
+            function (this: EnterNumericalValueView, sender: UITextField, event: Event) {
+                
+                if (this._previousNumericalValue) {
+                    
+                    this.numericalValue = this._previousNumericalValue
+                    
+                }
+                else {
+                    
+                    this.numericalValue = 0
+                    
+                }
+                
+            }.bind(this)
+        )
+        
+        this.textField.addTargetForControlEvent(
+            UITextField.controlEvent.EnterDown,
+            function (this: EnterNumericalValueView, sender: UITextField, event: Event) {
+                
+                const textNumericalValue = this.text.numericalValue
+                
+                if (!textNumericalValue.isANumber || isNaN(textNumericalValue) || !this.text) {
+                    
+                    if (this._previousNumericalValue) {
+                        
+                        this.numericalValue = this._previousNumericalValue
+                        
+                    }
+                    else {
+                        
+                        this.numericalValue = 0
+                        
+                    }
+                    
+                }
+                
+            }.bind(this)
+        )
         
         this.textField.addTargetForControlEvent(
             UITextField.controlEvent.TextChange,
             function (this: EnterNumericalValueView, sender: UITextField, event: Event) {
                 
-                const value = this.numericalValue
+                // const value = this.numericalValue
                 
-                if (!value.isANumber || isNaN(value)) {
+                const textNumericalValue = this.text.numericalValue
+                
+                if ((!textNumericalValue.isANumber || isNaN(textNumericalValue))) {
+                    
+                    if (["", "-"].contains(this.text)) {
+                        
+                        return
+                        
+                    }
                     
                     if (this._previousNumericalValue) {
                         
@@ -93,13 +132,7 @@ class EnterNumericalValueView extends UIView {
         )
         
         
-        
-        
-        
     }
-    
-    
-    
     
     
     updateContentForCurrentEnabledState() {
@@ -111,12 +144,17 @@ class EnterNumericalValueView extends UIView {
     }
     
     
-    
-    
-    
     get numericalValue() {
         
-        return this.text.numericalValue
+        let numericalValue = this.text.numericalValue
+        
+        // if (isNaN(numericalValue) && !isNaN(parseInt("" + this._previousNumericalValue))) {
+        //
+        //     return parseInt("" + this._previousNumericalValue)
+        //
+        // }
+        
+        return numericalValue
         
     }
     
@@ -130,21 +168,29 @@ class EnterNumericalValueView extends UIView {
             value = this.maxValue
         }
         
-        if (this.numericalValue == value) {
+        if (this.numericalValue == value && this.text) {
             return
         }
         
         this.textField.text = "" + value
         this._previousNumericalValue = value
         
-        this.textField.sendControlEventForKey(UITextField.controlEvent.TextChange, nil);
+        this.textField.sendControlEventForKey(UITextField.controlEvent.TextChange, nil)
         
     }
     
     
     get integerValue() {
         
-        return parseInt(this.text)
+        let number = parseInt(this.text)
+        
+        // if (isNaN(number) && !isNaN(parseInt("" + this._previousNumericalValue))) {
+        //
+        //     return parseInt("" + this._previousNumericalValue)
+        //
+        // }
+        
+        return number
         
     }
     
@@ -157,7 +203,15 @@ class EnterNumericalValueView extends UIView {
     
     get floatValue() {
         
-        return parseFloat(this.text)
+        let number = parseFloat(this.text)
+        
+        // if (isNaN(number) && !isNaN(parseFloat("" + this._previousNumericalValue))) {
+        //
+        //     return parseFloat("" + this._previousNumericalValue)
+        //
+        // }
+        
+        return number
         
     }
     
@@ -174,9 +228,6 @@ class EnterNumericalValueView extends UIView {
     }
     
     
-    
-    
-    
     layoutSubviews() {
         
         super.layoutSubviews()
@@ -188,13 +239,7 @@ class EnterNumericalValueView extends UIView {
         this.bounds.distributeViewsEquallyAlongWidth([this.minusButton, this.textField, this.plusButton], padding)
         
         
-        
-        
-        
     }
-    
-    
-    
     
     
 }

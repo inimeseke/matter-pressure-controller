@@ -121,12 +121,21 @@ Array.prototype.min = function() {
     return Math.min.apply(null, this);
 };
 
-interface Array<T> {
+if (!Array.prototype.average) {
+    Array.prototype.average = function() {
+        const sum = this.reduce((a, b) => a + b, 0);
+        return sum / this.length;
+    };
+}
+
+interface Array<T extends number> {
     
     readonly summedValue: T;
     
     max(): number;
     min(): number;
+    
+    average(): number;
     
     
 }

@@ -14,6 +14,7 @@ interface PressureDescriptorObject {
     deviceObject?: SerialPortDeviceObject;
     pressureValue?: number;
     
+    model: string;
     portString: "A" | "B" | "C" | "D"
     
     
@@ -36,9 +37,7 @@ class PressureViewController extends UIViewController {
         super(view)
         
         // Code for further setup if necessary
-        
         PressureViewController.instance = this
-        
         
     }
     
@@ -60,64 +59,41 @@ class PressureViewController extends UIViewController {
         
         this.view.backgroundColor = UIColor.whiteColor
         
-        
         this.devicesDropdown = new SearchableDropdown(this.view.elementID + "DevicesDropdown")
-        
         this.view.addSubview(this.devicesDropdown)
-        
         this.devicesDropdown.isSingleSelection = YES
-        
         this.devicesDropdown.intrinsicContentHeight = RETURNER(50)
-        
         this.devicesDropdown.expandedContainerViewHeight = 500
-        
         
         this.devicesDropdown.addTargetForControlEvent(
             SearchableDropdown.controlEvent.SelectionDidChange,
             async (sender, event) => {
                 
-                //console.log(sender)
-                
                 if (this._ignoreNextDevicesDropdownSelectionChange) {
-                    
                     this._ignoreNextDevicesDropdownSelectionChange = NO
-                    
                     return
-                    
                 }
                 
-                CBDialogViewShower.showActionIndicatorDialog("Loading")
+                CBDialogViewShower.showActionIndicatorDialog("Loading");
                 
                 // Tell server to connect to the devices
-                
-                let serialPortDeviceObject = (await SocketClient.ConnectToPressureDevice(
+                (await SocketClient.ConnectToPressureDevice(
                     this.devicesDropdown.selectedData.map((value) => {
-                        
                         return { devicePath: value.attachedObject.port.path }
-                        
                     }).firstElement
                 )).result
                 
-                
                 // Show connection in plotter view
-                
                 await this.updatePressureControllers()
                 
+                // Administrative stuff
                 this.view.setNeedsLayoutUpToRootView()
-                
                 CBDialogViewShower.hideActionIndicatorDialog()
                 
             }
         )
         
-        
-        CBDialogViewShower.showActionIndicatorDialog("Loading data.")
-        
-        
-        //this.descriptorObjects = this.storedData.arrayOfDescriptors
-        
         CBDialogViewShower.hideActionIndicatorDialog()
-        
         
     }
     
@@ -126,71 +102,52 @@ class PressureViewController extends UIViewController {
         
         const pressureDevice = (await SocketClient.RetrieveConnectedPressureDevice()).result
         
+        function descriptorWithPort(portString: "A" | "B" | "C" | "D") {
+            return {
+                
+                date: Date.now(),
+                deviceObject: JSON.parse(JSON.stringify(pressureDevice)),
+                identifier: "",
+                inputString: "",
+                pressureValue: 0,
+                
+                model: undefined,
+                portString: portString,
+                
+                updateDate: Date.now(),
+                viewType: "PressureView"
+                
+            }
+        }
+        
         if (pressureDevice) {
             
-            const descriptors = this.descriptorObjects
+            this.descriptorObjects = this.descriptorObjects.concat([
+                descriptorWithPort("A"),
+                descriptorWithPort("B"),
+                descriptorWithPort("C"),
+                descriptorWithPort("D")
+            ])
             
-            descriptors.push({
+            const dialogViewShower = CBDialogViewShower.showQuestionDialog("Calibrate the device")
+            dialogViewShower.yesButtonWasPressed = async () => {
                 
-                date: Date.now(),
-                deviceObject: JSON.parse(JSON.stringify(pressureDevice)),
-                identifier: "",
-                inputString: "",
-                pressureValue: 0,
+                dialogViewShower.dialogView.dismiss()
                 
-                portString: "A",
+                await this._pressureViews.firstElement.measureADCOffset()
                 
-                updateDate: Date.now(),
-                viewType: "PressureView"
+                CBDialogViewShower.hideActionIndicatorDialog()
                 
-            })
-            
-            descriptors.push({
+                for (let i = 0; i < 1; i++) {
+                    
+                    const pressureView = this._pressureViews[i]
+                    await pressureView.calibrateAtMillibars(
+                        [-500, -480, -450, -400, -300, -200, -100, 0, 100, 200, 500]
+                    )
+                    
+                }
                 
-                date: Date.now(),
-                deviceObject: JSON.parse(JSON.stringify(pressureDevice)),
-                identifier: "",
-                inputString: "",
-                pressureValue: 0,
-                
-                portString: "B",
-                
-                updateDate: Date.now(),
-                viewType: "PressureView"
-                
-            })
-            
-            descriptors.push({
-                
-                date: Date.now(),
-                deviceObject: JSON.parse(JSON.stringify(pressureDevice)),
-                identifier: "",
-                inputString: "",
-                pressureValue: 0,
-                
-                portString: "C",
-                
-                updateDate: Date.now(),
-                viewType: "PressureView"
-                
-            })
-            
-            descriptors.push({
-                
-                date: Date.now(),
-                deviceObject: JSON.parse(JSON.stringify(pressureDevice)),
-                identifier: "",
-                inputString: "",
-                pressureValue: 0,
-                
-                portString: "D",
-                
-                updateDate: Date.now(),
-                viewType: "PressureView"
-                
-            })
-            
-            this.descriptorObjects = descriptors
+            }
             
         }
         
@@ -200,49 +157,30 @@ class PressureViewController extends UIViewController {
         
     }
     
-    viewDidReceiveBroadcastEvent(event: UIViewBroadcastEvent) {
-        
-        super.viewDidReceiveBroadcastEvent(event)
-        
-        
-    }
-    
     
     get pressures(): { [p: string]: number } {
-        
         const pressures = {};
-        
         (this._pressureViews.filter(
             view => view.descriptorObject.viewType == PressureView.name
         ) as any as PressureView[]).forEach(
             view => pressures[view.descriptorObject.identifier] = view.pressureTarget
         )
-        
         return pressures
-        
     }
     
     set pressures(pressures: { [p: string]: number }) {
-        
         pressures.forEach((pressureTarget, key) => {
-            
             const plotterView = this._pressureViews.find(
                 view => wrapInNil(view).descriptorObject.identifier == key
             ) as any as PressureView
-            
             wrapInNil(plotterView).pressureTarget = pressureTarget
-            
         })
-        
     }
     
     
     get descriptorObjects(): PressureDescriptorObject[] {
-        
         const plotterDescriptorObjects = (this._pressureViews || []).map(view => view.descriptorObject)
-        
         return plotterDescriptorObjects
-        
     }
     
     set descriptorObjects(descriptorObjects: PressureDescriptorObject[]) {
@@ -258,105 +196,60 @@ class PressureViewController extends UIViewController {
             const existingView = this._pressureViews.find(
                 value => value.descriptorObject.identifier == descriptorObject.identifier
             )
-            
             if (IS(existingView)) {
-                
                 existingView.descriptorObject = descriptorObject
-                
                 return existingView
-                
             }
             
             const view = new classes[descriptorObject.viewType]()
-            
             view.descriptorObject = descriptorObject
-            
             view.configureWithObject({
-                
-                // // @ts-ignore
-                // inputTextDidChange: EXTEND(() => {
-                //
-                //
-                //
-                // }),
                 closeView: () => {
-                    
                     SocketClient.DisconnectFromDevice({
                         devicePath: FIRST_OR_NIL(descriptorObjects[index]).deviceObject.port.path
                     })
-                    
                     this._descriptorObjects.removeElementAtIndex(index)
-                    
                     this.descriptorObjects = this._descriptorObjects
-                    
                     this.updatePressureControllers()
-                    
-                    
                 }
-                
             })
             
             return view
             
         })
         
-        
         this._pressureViews.everyElement.removeFromSuperview()
         this.view.addSubviews(views)
         
-        
-        // const pressureViews: PressureView[] = (views as any[]).filter(view => view instanceof PressureView)
-        // pressureViews.forEach((value, index, array) => value.setInputTextIfNeeded())
-        
-        
         this._pressureViews = views
-        
         this.view.setNeedsLayoutUpToRootView()
-        
         
     }
     
     
     multiplyAll(amount: number) {
-        
         const pressures = {}
-        
         this.pressures.forEach((value, key) => pressures[key] = value * amount)
-        
         this.pressures = pressures
-        
     }
     
     addToAll(amount: number) {
-        
         const pressures = {}
-        
         this.pressures.forEach((value, key) => pressures[key] = value + amount)
-        
         this.pressures = pressures
-        
     }
     
     setAll(amountToSet: number) {
-        
         const pressures = {}
-        
         this.pressures.forEach((value, key) => pressures[key] = amountToSet)
-        
         this.pressures = pressures
-        
     }
     
     stopPumps(pumpName: string) {
-        
         SocketClient.StopPower().then(nil)
-        
         this._pressureViews.everyElement.closeView()
-        
         console.log("STOPPING PUMPS - " + pumpName)
-        
         CBDialogViewShower.alert("Stopping pumps - " + pumpName)
-        
     }
     
     
@@ -364,13 +257,9 @@ class PressureViewController extends UIViewController {
         
         super.viewDidAppear()
         
-        
         let allDevices: SerialPortDeviceObject[] = FIRST((await SocketClient.RetrieveAllDevices()).result, [])
-        
         this.devicesDropdown.data = allDevices.map((value, index, array) => {
-            
             let port: CBDropdownDataItem<SerialPortDeviceObject> = {
-                
                 _id: value.port.path,
                 dropdownCode: "asdasdasdasdasdasdasdasd",
                 isADropdownDataRow: true,
@@ -378,34 +267,11 @@ class PressureViewController extends UIViewController {
                 itemCode: value.port.path,
                 title: { en: value.port.path },
                 attachedObject: value
-                
             }
-            
-            
             return port
-            
         })
         
         await this.updatePressureControllers()
-        
-        
-    }
-    
-    async viewDidDisappear() {
-        
-        super.viewDidDisappear()
-        
-        
-    }
-    
-    
-    async handleRoute(route: UIRoute) {
-        
-        super.handleRoute(route)
-        
-        const inquiryComponent = route.componentWithViewController(PressureViewController)
-        
-        route.didcompleteComponent(inquiryComponent)
         
     }
     
@@ -416,28 +282,20 @@ class PressureViewController extends UIViewController {
         
         const padding = RootViewController.paddingLength
         const labelHeight = padding * 1.25
-        
-        // View bounds
-        var bounds = this.view.bounds
+        const bounds = this.view.bounds
         
         this.view.setPaddings(0, 0, padding, 0)
-        
         
         const ignoredViews: UIView[] = []
         
         let viewFrame = bounds.rectangleWithInset(padding).rectangleWithHeight(0)
-        
         this.view.subviews.filter((value, index, array) => !ignoredViews.contains(value)).forEach((view) => {
-            
             view.frame = viewFrame.rectangleForNextRow(
                 padding,
                 view.intrinsicContentHeight(bounds.width - padding * 2)
             )
-            
             viewFrame = view.frame
-            
         })
-        
         
     }
     

@@ -6,6 +6,7 @@ import { promisify } from "util"
 import { SocketController } from "../lib/SocketController"
 import Utils from "../lib/Utils"
 
+
 interface SerialPortFluikaDeviceConnectionDescriptorObject extends SerialPortFluikaDeviceConnectionObject {
     
     
@@ -634,7 +635,7 @@ export class PressureController {
                             
                             const responseDataString: string = responseData?.toString()
                             
-                            //console.log(responseDataString)
+                            console.log(responseDataString)
                             
                             let responseObject: any
                             try {
@@ -743,14 +744,12 @@ export class PressureController {
                 const minPressureInPoints = connectionObject.minPressureInPoints ?? 0
                 const maxPressureInMillibars = connectionObject.maxPressureInMillibars ?? 1
                 const minPressureInMillibars = connectionObject.minPressureInMillibars ?? 0
-                const maxVoltage = 5.1
+                const maxVoltage = 5.0
                 
                 const pressureInPoints = (
-                    (
-                        (requestObject.pressureInMillibars - minPressureInMillibars) /
-                        (maxPressureInMillibars - minPressureInMillibars)
-                    ) * maxVoltage
-                ) / connectionObject.pressuresObject.multiplier
+                    (requestObject.pressureInMillibars - minPressureInMillibars) /
+                    (maxPressureInMillibars - minPressureInMillibars)
+                )   * maxPressureInPoints // / connectionObject.pressuresObject.multiplier
                 
                 const message = "" + [
                     [pressureInPoints.integerValue, minPressureInPoints].max(),

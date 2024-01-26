@@ -27,9 +27,29 @@ class PressureViewController extends UIViewController {
     private _pressureViews: PressureView[] = []
     private devicesDropdown: SearchableDropdown<SerialPortDeviceObject>
     
+    private zeroADCOffsetCalibrationButton: CBButton
+    private scanCalibrationButton: CBButton
+    
     static instance: PressureViewController
     private _ignoreNextDevicesDropdownSelectionChange: boolean
     
+    static ScanCalibrationMillibars = [
+        -1000,
+        -750,
+        -500,
+        -480,
+        -450,
+        -400,
+        -300,
+        -200,
+        -100,
+        0,
+        100,
+        200,
+        500,
+        750,
+        1000
+    ]
     
     constructor(view) {
         
@@ -93,6 +113,20 @@ class PressureViewController extends UIViewController {
             }
         )
         
+        this.zeroADCOffsetCalibrationButton = new CBButton()
+        this.zeroADCOffsetCalibrationButton.titleLabel.text = "Calibrate all ADC offsets"
+        this.zeroADCOffsetCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = async () => {
+            await this.calibrateZeroADCOffsets()
+        }
+        this.view.addSubview(this.zeroADCOffsetCalibrationButton)
+        
+        this.scanCalibrationButton = new CBButton()
+        this.scanCalibrationButton.titleLabel.text = "Calibrate all channels by scanning"
+        this.scanCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
+            this.scanCalibrateAllChannels()
+        }
+        this.view.addSubview(this.scanCalibrationButton)
+        
         CBDialogViewShower.hideActionIndicatorDialog()
         
     }
@@ -129,24 +163,19 @@ class PressureViewController extends UIViewController {
                 descriptorWithPort("D")
             ])
             
-            const dialogViewShower = CBDialogViewShower.showQuestionDialog("Calibrate the device")
-            dialogViewShower.yesButtonWasPressed = async () => {
+            const needsCalibration = this._pressureViews.anyMatch(value => !value.calibrationValues)
+            if (needsCalibration) {
                 
-                dialogViewShower.dialogView.dismiss()
-                
-                await this._pressureViews.firstElement.measureADCOffset()
-                
-                CBDialogViewShower.hideActionIndicatorDialog()
-                
-                for (let i = 0; i < 1; i++) {
+                const dialogViewShower = CBDialogViewShower.showQuestionDialog("Calibrate the device")
+                dialogViewShower.yesButtonWasPressed = async () => {
                     
-                    const pressureView = this._pressureViews[i]
-                    await pressureView.calibrateAtMillibars(
-                        [-500, -480, -450, -400, -300, -200, -100, 0, 100, 200, 500]
-                    )
+                    dialogViewShower.dialogView.dismiss()
+                    
+                    await this.calibrateZeroADCOffsets()
+                    await this.scanCalibrateAllChannels()
                     
                 }
-                
+            
             }
             
         }
@@ -157,6 +186,25 @@ class PressureViewController extends UIViewController {
         
     }
     
+    
+    async calibrateZeroADCOffsets() {
+        for (let i = 0; i < this._pressureViews.length; i++) {
+            const pressureView = this._pressureViews[i]
+            await pressureView.measureADCOffset(i == 0)
+        }
+        CBDialogViewShower.hideActionIndicatorDialog()
+    }
+    
+    async scanCalibrateAllChannels() {
+        for (let i = 0; i < this._pressureViews.length; i++) {
+            const pressureView = this._pressureViews[i]
+            await pressureView.calibrateAtMillibars(
+                PressureViewController.ScanCalibrationMillibars,
+                10,
+                i == 0
+            )
+        }
+    }
     
     get pressures(): { [p: string]: number } {
         const pressures = {};
@@ -297,6 +345,9 @@ class PressureViewController extends UIViewController {
             viewFrame = view.frame
         })
         
+        viewFrame.rectangleForNextRow(padding, labelHeight * 2)
+            .distributeViewsAlongWidth([this.zeroADCOffsetCalibrationButton, this.scanCalibrationButton], 1, padding)
+        
     }
     
     
@@ -309,7 +360,7 @@ class PressureViewController extends UIViewController {
             //padding * 2 + padding + labelHeight * 2 +
             //this.inputTextArea.intrinsicContentHeight(constrainingWidth) +
             (this.view.subviews.everyElement.intrinsicContentHeight(constrainingWidth) as any as number[]).summedValue +
-            20 * this.view.subviews.length + 20
+            20 * this.view.subviews.length + 20 + labelHeight * 2 + padding
         
         
         return result

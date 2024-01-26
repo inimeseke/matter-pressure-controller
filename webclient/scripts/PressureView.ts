@@ -39,7 +39,16 @@ class PressureView extends UIView {
     private readonly pressureLabel: UITextView
     private isUpdatingPressureScheduled: boolean
     
+    private readonly zeroingButton: CBButton
+    private readonly informationLabel: UITextView
+    
+    private readonly zeroADCOffsetCalibrationButton: CBButton
+    private readonly scanCalibrationButton: CBButton
+    
     private _descriptorObject: PressureDescriptorObject
+    private _lastSentRequestMillibars: number
+    private _currentTarget: number
+    
     set descriptorObject(descriptorObject: PressureDescriptorObject) {
         
         this._descriptorObject = descriptorObject
@@ -66,6 +75,7 @@ class PressureView extends UIView {
             " (updated at " + new Date(descriptorObject.updateDate).dateString + ")" + " " + this.deviceObject.port.path
         
     }
+    
     get descriptorObject() {
         
         let objectValue: PressureDescriptorObject = {
@@ -101,9 +111,11 @@ class PressureView extends UIView {
         // Ask server about the pressure
         this.updatePressure().then(nil)
     }
+    
     get deviceObject() {
         return this._deviceObject
     }
+    
     get port(): "A" | "B" | "C" | "D" {
         return this._descriptorObject.portString
     }
@@ -111,9 +123,11 @@ class PressureView extends UIView {
     set calibrationValues(value: PressureCalibrationMeasurementObject[]) {
         localStorage.setItem("_calibrationValues_" + this.port, JSON.stringify(value))
     }
+    
     get calibrationValues(): PressureCalibrationMeasurementObject[] | undefined {
         return JSON.parse(localStorage.getItem("_calibrationValues_" + this.port))
     }
+    
     get calibrationPoints(): PVPoint[] {
         return this.calibrationValues.map(value => {
             
@@ -125,10 +139,10 @@ class PressureView extends UIView {
             
         })
     }
+    
     set zeroADCOffsetObject(value: PressureCalibrationMeasurementObject) {
         localStorage.setItem("_zeroADCOffsetObject_" + this.port, JSON.stringify(value))
     }
-    
     
     get zeroADCOffsetObject(): PressureCalibrationMeasurementObject | undefined {
         return JSON.parse(localStorage.getItem("_zeroADCOffsetObject_" + this.port))
@@ -138,6 +152,15 @@ class PressureView extends UIView {
         const zeroADCOffsetObject = this.zeroADCOffsetObject
         return (zeroADCOffsetObject?.requestedMillibars ?? 0) - (zeroADCOffsetObject?.averageMillibarsMeasured ?? 0)
     }
+    
+    set zeroingFactor(value: number) {
+        localStorage.setItem("_zeroingFactor_" + this.port, "" + value)
+    }
+    
+    get zeroingFactor(): number | undefined {
+        return (localStorage.getItem("_zeroingFactor_" + this.port) ?? "0").numericalValue
+    }
+    
     constructor(elementID?: string) {
         
         // Calling super
@@ -190,14 +213,25 @@ class PressureView extends UIView {
         this.pressureTargetView.textField.addControlEventTarget.TextChange.Blur.EnterDown = async (sender, event) => {
             
             //console.log(sender)
+            function eventKeyIsEnter(event) {
+                if (event.keyCode !== 13) {
+                    return NO
+                }
+                return YES
+            }
             
             const isTextFieldFocused = this.pressureTargetView.textField.viewHTMLElement == document.activeElement
             
-            
             // If the event is nil, then the event is from + or - buttons
+            if (isTextFieldFocused && event instanceof KeyboardEvent && eventKeyIsEnter(event)) {
+                return
+            }
+            
             if (IS(this.deviceObject) && !isNaN(this.pressureTargetView.integerValue)) {
                 
-                let pressureInMillibars = this.pressureTargetView.integerValue
+                let pressureInMillibars = this.pressureTargetView.integerValue + this.zeroingFactor
+                
+                this._currentTarget = pressureInMillibars
                 
                 if (this.calibrationValues) {
                     
@@ -212,9 +246,9 @@ class PressureView extends UIView {
                 }
                 
                 
-                
-                console.log("Requested pressure from user is " + this.pressureTargetView.integerValue + " mbar.")
-                console.log("sending SETPRESSURE command with " + pressureInMillibars + " mbar")
+                console.log("Requested pressure from user is " + this.pressureTargetView.integerValue + " mbar + zeroingValue of " + this.zeroingFactor + " mbar = " + (this.pressureTargetView.integerValue + this.zeroingFactor) + " mbar.")
+                console.log("sending SETPRESSURE command with " + pressureInMillibars + " mbar.")
+                this._lastSentRequestMillibars = pressureInMillibars
                 await SocketClient.SetPressureOnDeviceAndPort({
                     devicePath: this.deviceObject.port.path,
                     port: this.port,
@@ -229,31 +263,38 @@ class PressureView extends UIView {
         }
         this.addSubview(this.pressureTargetView)
         
-        // this.pressureTargetView.textField.addControlEventTarget.Blur.EnterDown = async (sender, event) => {
-        //
-        //     //console.log(sender)
-        //
-        //     if (IS(this.deviceObject)) {
-        //
-        //         const targetPressure = this.pressureTargetView.integerValue
-        //         await SocketClient.SetPressureOnDeviceAndPort({
-        //             devicePath: this.deviceObject.port.path,
-        //             port: this.port,
-        //             pressureInMillibars: targetPressure + this.interpolateAndExtrapolate(
-        //                 this.calibrationPoints ?? [
-        //                     { x: 0, y: 0 },
-        //                     { x: 1, y: 1 }
-        //                 ] ,
-        //                 targetPressure
-        //             ) + this.zeroADCOffset
-        //         })
-        //
-        //     }
-        //
-        //     this.inputTextDidChange()
-        //
-        //
-        // }
+        this.zeroingButton = new CBButton()
+        this.zeroingButton.titleLabel.text = "Set as zero"
+        this.zeroingButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
+            
+            this.zeroingFactor = this.pressureTarget + this.zeroingFactor
+            this.pressureTarget = 0
+            this.pressureTargetView.textField.sendControlEventForKey(UITextField.controlEvent.TextChange, nil)
+            
+        }
+        this.addSubview(this.zeroingButton)
+        
+        this.zeroADCOffsetCalibrationButton = new CBButton()
+        this.zeroADCOffsetCalibrationButton.titleLabel.text = "Calibrate ADC offset"
+        this.zeroADCOffsetCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = async () => {
+            await this.measureADCOffset(YES)
+            CBDialogViewShower.hideActionIndicatorDialog()
+        }
+        this.addSubview(this.zeroADCOffsetCalibrationButton)
+        
+        this.scanCalibrationButton = new CBButton()
+        this.scanCalibrationButton.titleLabel.text = "Calibrate by scanning"
+        this.scanCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
+            this.calibrateAtMillibars(
+                PressureViewController.ScanCalibrationMillibars
+            )
+            CBDialogViewShower.hideActionIndicatorDialog()
+        }
+        this.addSubview(this.scanCalibrationButton)
+        
+        this.informationLabel = new UITextView()
+        this.informationLabel.isSingleLine = NO
+        this.addSubview(this.informationLabel)
         
         this.closeButton.addControlEventTarget.PointerUpInside.EnterDown = (sender, event) => {
             
@@ -274,9 +315,18 @@ class PressureView extends UIView {
     }
     
     
+    private updateInformationLabelText() {
+        
+        this.informationLabel.text = "Target: " + this._currentTarget + " mbar, " +
+            "Zeroing factor: " + this.zeroingFactor + " mbar, " +
+            "Requested as: " + (this._lastSentRequestMillibars?.integerValue ?? "(-)") + " mbar\n" + "ADCOffset: " + this.zeroADCOffset.toFixed(2) + " mbar"
+        
+    }
+    
     set pressureTarget(pressureTarget: number) {
         this.pressureTargetView.integerValue = pressureTarget
     }
+    
     get pressureTarget(): number {
         return this.pressureTargetView.integerValue
     }
@@ -326,7 +376,7 @@ class PressureView extends UIView {
             (maxPressureInMillibars - minPressureInMillibars) + minPressureInMillibars
         
         this.pressureLabel.text = "" + (
-            pressure + this.zeroADCOffset // + this.deviceObject.minPressureInMillibars
+            pressure + this.zeroADCOffset - this.zeroingFactor // + this.deviceObject.minPressureInMillibars
         ).toPrecision(5)
         
         if (!this.isUpdatingPressureScheduled && scheduleUpdate) {
@@ -337,31 +387,39 @@ class PressureView extends UIView {
             this.isUpdatingPressureScheduled = YES
         }
         
+        this.updateInformationLabelText()
+        
         return pressure
         
     }
     
-    async measureADCOffset() {
-        return new Promise(resolve =>
-            CBDialogViewShower.alert(
-                "Disconnect and open all inputs and outputs and press ok.",
-                async () => {
-                    // Measure the inaccuracy from the ADC at zero
-                    this.zeroADCOffsetObject = await this.measureCalibrationValueAtMillibars(0, 25)
-                    resolve(null)
-                }
+    async measureADCOffset(showDialog = YES) {
+        
+        if (showDialog) {
+            await new Promise(resolve =>
+                CBDialogViewShower.alert(
+                    "Disconnect and open all inputs and outputs and press ok.",
+                    () => resolve(null)
+                )
             )
-        )
+        }
+        
+        // Measure the inaccuracy from the ADC at zero
+        this.zeroADCOffsetObject = await this.measureCalibrationValueAtMillibars(0, 25)
+        
     }
     
-    async calibrateAtMillibars(millibars: number[], numberOfSamplesPerPoint = 10) {
+    async calibrateAtMillibars(millibars: number[], numberOfSamplesPerPoint = 10, showDialog = YES) {
         
-        await new Promise(resolve =>
-            CBDialogViewShower.alert(
-                "Connect all inputs and close all outputs and press ok.",
-                () => resolve(null)
+        if (showDialog) {
+            await new Promise(resolve =>
+                CBDialogViewShower.alert(
+                    "Connect all inputs and close all outputs and press ok.",
+                    () => resolve(null)
+                )
             )
-        )
+        }
+        
         CBDialogViewShower.showActionIndicatorDialog("Calibrating")
         
         const pressures: PressureCalibrationMeasurementObject[] = []
@@ -532,6 +590,20 @@ class PressureView extends UIView {
         this.pressureTargetView.frame = this.deviceTextField.frame.rectangleForNextRow(padding, 50)
             .rectangleWithWidth(bounds.width * 0.5, 1)
         
+        this.pressureLabel.frame.rectangleForNextRow(padding)
+            .rectangleWithWidth(bounds.width)
+            .distributeViewsAlongWidth(
+                [
+                    this.zeroingButton,
+                    this.zeroADCOffsetCalibrationButton,
+                    this.scanCalibrationButton,
+                    this.informationLabel
+                ],
+                1,
+                padding,
+                [200, 200, 200, nil]
+            )
+        
         
         this.previousWidth = bounds.width
         
@@ -569,7 +641,7 @@ class PressureView extends UIView {
         var chartHeight = (constrainingWidth * 2.5 / 3.5) * 0.5
         
         var result = padding + this.titleLabel.intrinsicContentHeight(constrainingWidth) + padding * 0.25 +
-            this.inputTextArea.intrinsicContentHeight(constrainingWidth) + padding + labelHeight * 2 + padding + 50
+            this.inputTextArea.intrinsicContentHeight(constrainingWidth) + padding + labelHeight * 2 + padding + 50 + padding + labelHeight * 2
         
         // if (IS_NOT(this.chartView.hidden)) {
         //

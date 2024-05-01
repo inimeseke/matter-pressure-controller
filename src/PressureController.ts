@@ -616,7 +616,7 @@ export class PressureController {
                 const connectionObject: SerialPortPressureDeviceConnectionDescriptorObject = {
                     
                     
-                    serialNumber: "1",
+                    serialNumber: "0",
                     model: "MATTERPressureController",
                     
                     port: port,

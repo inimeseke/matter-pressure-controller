@@ -114,7 +114,11 @@ class CBDialogView extends UIView {
     }
     
     
-    
+    // set frame(frame: UIRectangle) {
+    //
+    //     super.frame = frame
+    //
+    // }
     
     
     initCancelButtonIfNeeded() {

@@ -295,7 +295,6 @@ class PressureViewController extends UIViewController {
     
     stopPumps(pumpName: string) {
         SocketClient.StopPower().then(nil)
-        this._pressureViews.everyElement.closeView()
         console.log("STOPPING PUMPS - " + pumpName)
         CBDialogViewShower.alert("Stopping pumps - " + pumpName)
     }
@@ -334,7 +333,7 @@ class PressureViewController extends UIViewController {
         
         this.view.setPaddings(0, 0, padding, 0)
         
-        const ignoredViews: UIView[] = []
+        const ignoredViews: UIView[] = [this.zeroADCOffsetCalibrationButton, this.scanCalibrationButton]
         
         let viewFrame = bounds.rectangleWithInset(padding).rectangleWithHeight(0)
         this.view.subviews.filter((value, index, array) => !ignoredViews.contains(value)).forEach((view) => {
@@ -360,7 +359,7 @@ class PressureViewController extends UIViewController {
             //padding * 2 + padding + labelHeight * 2 +
             //this.inputTextArea.intrinsicContentHeight(constrainingWidth) +
             (this.view.subviews.everyElement.intrinsicContentHeight(constrainingWidth) as any as number[]).summedValue +
-            20 * this.view.subviews.length + 20 + labelHeight * 2 + padding
+            20 * this.view.subviews.length + padding
         
         
         return result

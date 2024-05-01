@@ -24,7 +24,6 @@ interface PVPoint {
 
 class PressureView extends UIView {
     
-    titleLabel: UITextView
     inputTextArea: UITextArea
     
     // chartView: UIView
@@ -32,8 +31,8 @@ class PressureView extends UIView {
     // resultsLabel: UIView
     
     previousWidth: number
-    private readonly closeButton: CBButton
-    private readonly deviceTextField: UITextField
+    
+    private readonly deviceLabel: UITextView
     private readonly pressureTargetView: EnterNumericalValueView
     
     private readonly pressureLabel: UITextView
@@ -45,9 +44,14 @@ class PressureView extends UIView {
     private readonly zeroADCOffsetCalibrationButton: CBButton
     private readonly scanCalibrationButton: CBButton
     
+    private readonly calibrationChartButton: CBButton
+    
     private _descriptorObject: PressureDescriptorObject
     private _lastSentRequestMillibars: number
     private _currentTarget: number
+    
+    chartView: UIView
+    chart: any
     
     set descriptorObject(descriptorObject: PressureDescriptorObject) {
         
@@ -57,22 +61,18 @@ class PressureView extends UIView {
         // @ts-ignore
         let model = wrapInNil(descriptorObject).deviceObject.model
         
-        this.deviceTextField.text = FIRST(
-            wrapInNil(descriptorObject).deviceObject.serialNumber,
-            "Missing serial number."
-        ) + " " + FIRST(model, "No model") + " " + descriptorObject.portString
+        this.deviceLabel.text = //FIRST(model, "No model") + " " +
+            descriptorObject.portString
         
         this.setInputTextIfNeeded(descriptorObject)
         
-        if (this.deviceTextField.text.contains(serialOnOffTest0021)) {
+        if (this.deviceLabel.text.contains(serialOnOffTest0021)) {
             this.userInteractionEnabled = NO
             this.alpha = 0.5
         }
         
         this.pressureTargetView.numericalValue = descriptorObject.pressureValue || 0
         this.deviceObject = descriptorObject.deviceObject || nil
-        this.titleLabel.text = new Date(descriptorObject.date || descriptorObject.updateDate).dateString +
-            " (updated at " + new Date(descriptorObject.updateDate).dateString + ")" + " " + this.deviceObject.port.path
         
     }
     
@@ -125,7 +125,7 @@ class PressureView extends UIView {
     }
     
     get calibrationValues(): PressureCalibrationMeasurementObject[] | undefined {
-        return JSON.parse(localStorage.getItem("_calibrationValues_" + this.port))
+        return JSON.parse(localStorage.getItem("_calibrationValues_" + this.port) ?? "[]")
     }
     
     get calibrationPoints(): PVPoint[] {
@@ -168,20 +168,12 @@ class PressureView extends UIView {
         
         // Code for further setup if necessary
         
-        this.backgroundColor = UIColor.whiteColor
-        
-        this.titleLabel = new UITextView(this.elementID + "TitleLabel", UITextView.type.header3)
-        this.titleLabel.textAlignment = UITextView.textAlignment.left
-        this.titleLabel.nativeSelectionEnabled = NO
-        this.titleLabel.isSingleLine = NO
-        this.addSubview(this.titleLabel)
-        
-        this.closeButton = new CBButton()
-        this.closeButton.titleLabel.text = "Close"
-        this.addSubview(this.closeButton)
+        //this.backgroundColor = UIColor.colorWithRGBA(251, 251, 251)
         
         this.inputTextArea = new UITextArea(this.elementID + "InputTextArea")
         this.inputTextArea.changesOften = YES
+        this.inputTextArea.style.fontWeight = "bold"
+        this.inputTextArea.textAlignment = UITextView.textAlignment.center
         this.addSubview(this.inputTextArea)
         
         // @ts-ignore
@@ -197,10 +189,10 @@ class PressureView extends UIView {
         this.inputTextArea.style.overflowWrap = "anywhere"
         this.inputTextArea.style.whiteSpace = "pre-wrap"
         
-        this.deviceTextField = new UITextField(this.elementID + "DeviceTextField")
-        this.deviceTextField.placeholderText = "Input your device path here."
-        this.deviceTextField.userInteractionEnabled = NO
-        this.addSubview(this.deviceTextField)
+        this.deviceLabel = new UITextView(this.elementID + "DeviceLabel")
+        this.deviceLabel.textAlignment = UITextField.textAlignment.center
+        this.deviceLabel.alpha = 0.5
+        this.addSubview(this.deviceLabel)
         
         this.pressureLabel = new UITextView(this.elementID + "PressureLabel")
         this.pressureLabel.textSuffix = " mbar"
@@ -223,7 +215,7 @@ class PressureView extends UIView {
             const isTextFieldFocused = this.pressureTargetView.textField.viewHTMLElement == document.activeElement
             
             // If the event is nil, then the event is from + or - buttons
-            if (isTextFieldFocused && event instanceof KeyboardEvent && eventKeyIsEnter(event)) {
+            if (isTextFieldFocused && event instanceof KeyboardEvent && !eventKeyIsEnter(event)) {
                 return
             }
             
@@ -233,7 +225,7 @@ class PressureView extends UIView {
                 
                 this._currentTarget = pressureInMillibars
                 
-                if (this.calibrationValues) {
+                if (this.calibrationValues?.length) {
                     
                     pressureInMillibars = PressureView.interpolateAndExtrapolate(
                         this.calibrationPoints ?? [
@@ -263,8 +255,9 @@ class PressureView extends UIView {
         }
         this.addSubview(this.pressureTargetView)
         
-        this.zeroingButton = new CBButton()
+        this.zeroingButton = new CBFlatButton()
         this.zeroingButton.titleLabel.text = "Set as zero"
+        this.zeroingButton.colors.titleLabel.normal = UIColor.blackColor
         this.zeroingButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
             
             this.zeroingFactor = this.pressureTarget + this.zeroingFactor
@@ -274,16 +267,18 @@ class PressureView extends UIView {
         }
         this.addSubview(this.zeroingButton)
         
-        this.zeroADCOffsetCalibrationButton = new CBButton()
+        this.zeroADCOffsetCalibrationButton = new CBFlatButton()
         this.zeroADCOffsetCalibrationButton.titleLabel.text = "Calibrate ADC offset"
+        this.zeroADCOffsetCalibrationButton.colors.titleLabel.normal = UIColor.blackColor
         this.zeroADCOffsetCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = async () => {
             await this.measureADCOffset(YES)
             CBDialogViewShower.hideActionIndicatorDialog()
         }
         this.addSubview(this.zeroADCOffsetCalibrationButton)
         
-        this.scanCalibrationButton = new CBButton()
+        this.scanCalibrationButton = new CBFlatButton()
         this.scanCalibrationButton.titleLabel.text = "Calibrate by scanning"
+        this.scanCalibrationButton.colors.titleLabel.normal = UIColor.blackColor
         this.scanCalibrationButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
             this.calibrateAtMillibars(
                 PressureViewController.ScanCalibrationMillibars
@@ -292,15 +287,33 @@ class PressureView extends UIView {
         }
         this.addSubview(this.scanCalibrationButton)
         
-        this.informationLabel = new UITextView()
-        this.informationLabel.isSingleLine = NO
-        this.addSubview(this.informationLabel)
-        
-        this.closeButton.addControlEventTarget.PointerUpInside.EnterDown = (sender, event) => {
+        this.calibrationChartButton = new CBFlatButton()
+        this.calibrationChartButton.titleLabel.text = "Chart"
+        this.calibrationChartButton.colors.titleLabel.normal = UIColor.blackColor
+        this.calibrationChartButton.addControlEventTarget.EnterDown.PointerUpInside = () => {
+            this.chartView.hidden = !this.chartView.hidden
+            this.calibrationChartButton.selected = !this.chartView.hidden
             
-            this.closeView()
+            this.chart.data.datasets[0].data = this.calibrationPoints.map(point => {
+                // noinspection JSSuspiciousNameCombination
+                return { x: point.y, y: point.x }
+            })
+            this.chart.data.datasets[0].showLine = YES
+            this.chart.data.datasets[0].interpolate = YES
             
+            
+            // this.chart.data.datasets[1].data = this.calibrationPoints
+            // this.chart.data.datasets[1].showLine = YES
+            // this.chart.data.datasets[1].pointRadius = 0
+            // this.chart.data.datasets[1].interpolate = YES
+            this.setNeedsLayoutUpToRootView()
         }
+        this.addSubview(this.calibrationChartButton)
+        
+        this.informationLabel = new UITextView()
+        //this.informationLabel.isSingleLine = NO
+        this.informationLabel.useAutomaticFontSize(8)
+        this.addSubview(this.informationLabel)
         
         this.inputTextArea.addControlEventTarget.PointerHover = sender => {
             
@@ -312,6 +325,154 @@ class PressureView extends UIView {
         this.inputTextArea.addControlEventTarget.PointerCancel.PointerLeave = sender => sender.style.borderColor = UIColor.greyColor.stringValue
         this.inputTextArea.addControlEventTarget.TextChange = () => this.inputTextDidChange()
         
+        this.chartView = new UIView(this.elementID + "ChartView", nil, "canvas")
+        this.chartView.hidden = YES
+        this.addSubview(this.chartView)
+        
+        // @ts-ignore
+        const ctx = this.chartView.viewHTMLElement.getContext("2d")
+        
+        // @ts-ignore
+        this.chart = new Chart(ctx, {
+            // The type of chart we want to create
+            //type: "line",
+            type: "scatter",
+            
+            // The data for our dataset
+            data: {
+                //labels: ['January', 'February', 'March', 'April', 'May', 'June'],
+                datasets: [
+                    
+                    {
+                        label: "Calibration points",
+                        fill: false,
+                        lineTension: 0,
+                        //backgroundColor: UIColor.transparentColor,
+                        borderColor: "rgb(87, 173, 122)" //,
+                        //data: [{ x: 0, y: 0 }, { x: 2, y: 10 }, { x: 5, y: 5 }, { x: 7, y: 2 }, { x: 8, y: 20 }, {
+                        // x: 11, y: 45 }]
+                    }
+                    // {
+                    //     label: "Fitted line",
+                    //     fill: false,
+                    //     lineTension: 0,
+                    //     backgroundColor: "rgb(213, 150, 102)",
+                    //     borderColor: "rgb(213, 150, 102)" //,
+                    //     //data: [{ x: 0, y: 0 }, { x: 2, y: 10 }, { x: 5, y: 5 }, { x: 7, y: 2 }, { x: 8, y: 20 }, {
+                    //     // x: 11, y: 45 }]
+                    // }
+                
+                
+                ]
+            },
+            
+            // Configuration options go here
+            options: {
+                
+                fill: false,
+                lineTension: 0,
+                scales: {
+                    x: {
+                        type: "linear",
+                        position: "bottom"
+                    },
+                    y: {
+                        type: "linear",
+                        position: "bottom"
+                    },
+                    xAxes: [
+                        {
+                            scaleLabel: {
+                                display: true,
+                                labelString: "Requested (mBar)"
+                            }
+                        }
+                    ],
+                    yAxes: [
+                        {
+                            scaleLabel: {
+                                display: true,
+                                labelString: "Measured (mBar)"
+                            }
+                        }
+                    ]
+                    // yAxes: [
+                    //     {
+                    //         type: "linear",
+                    //         ticks: {
+                    //             min: -1500,
+                    //             max: 1500,
+                    //             callback: function (value, index, values) {
+                    //                 if (value === 1000000) {
+                    //                     return "1M"
+                    //                 }
+                    //                 if (value === 100000) {
+                    //                     return "100K"
+                    //                 }
+                    //                 if (value === 10000) {
+                    //                     return "10K"
+                    //                 }
+                    //                 if (value === 1000) {
+                    //                     return "1K"
+                    //                 }
+                    //                 if (value === 100) {
+                    //                     return "100"
+                    //                 }
+                    //                 if (value === 10) {
+                    //                     return "10"
+                    //                 }
+                    //                 if (value === 1) {
+                    //                     return "1"
+                    //                 }
+                    //                 if (value === 0) {
+                    //                     return "0"
+                    //                 }
+                    //                 return null
+                    //             }
+                    //         }
+                    //     }
+                    // ]
+                },
+                tooltips: {
+                    mode: "interpolate",
+                    intersect: true
+                },
+                plugins: {
+                    crosshair: {
+                        line: {
+                            color: "#F66",  // crosshair line color
+                            width: 1        // crosshair line width
+                        },
+                        sync: {
+                            enabled: true,            // enable trace line syncing with other charts
+                            group: 1,                 // chart group
+                            suppressTooltips: false   // suppress tooltips when showing a synced tracer
+                        },
+                        zoom: {
+                            enabled: NO,                                      // enable zooming
+                            zoomboxBackgroundColor: "rgba(66,133,244,0.2)",     // background color of zoom box
+                            zoomboxBorderColor: "#48F",                         // border color of zoom box
+                            zoomButtonText: "Reset Zoom",                       // reset zoom button text
+                            zoomButtonClass: "reset-zoom"                      // reset zoom button class
+                        },
+                        callbacks: {
+                            beforeZoom: function (start, end) {                  // called before zoom, return false to prevent zoom
+                                return true
+                            },
+                            afterZoom: function (start, end) {                   // called after zoom
+                            }
+                        }
+                    }
+                }
+                // responsive: false,
+                // maintainAspectRatio: false,
+                // showScale: true
+                
+            }
+            
+        })
+        
+        
     }
     
     
@@ -319,7 +480,8 @@ class PressureView extends UIView {
         
         this.informationLabel.text = "Target: " + this._currentTarget + " mbar, " +
             "Zeroing factor: " + this.zeroingFactor + " mbar, " +
-            "Requested as: " + (this._lastSentRequestMillibars?.integerValue ?? "(-)") + " mbar\n" + "ADCOffset: " + this.zeroADCOffset.toFixed(2) + " mbar"
+            "Requested as: " + (this._lastSentRequestMillibars?.integerValue ?? "(-)") + " mbar " + "ADCOffset: " + this.zeroADCOffset.toFixed(
+                2) + " mbar"
         
     }
     
@@ -333,8 +495,8 @@ class PressureView extends UIView {
     
     setInputTextIfNeeded(descriptorObject = this.descriptorObject) {
         const initialData = descriptorObject.inputString ||
-            CBCore.sharedInstance.deviceNames[this.deviceTextField.text] ||
-            IF(this.deviceTextField.text.contains(serialOnOffTest0021))(RETURNER("Power controller"))()
+            CBCore.sharedInstance.deviceNames[this.deviceLabel.text] ||
+            IF(this.deviceLabel.text.contains(serialOnOffTest0021))(RETURNER("Power controller"))()
         if (initialData) {
             this.inputTextArea.text = initialData
         }
@@ -454,7 +616,14 @@ class PressureView extends UIView {
             return new Promise(resolve => setTimeout(resolve, ms))
         }
         
-        CBDialogViewShower.showActionIndicatorDialog("Cal " + millibars + " mbar. Port " + this.port)
+        const initialDelay = 5250
+        const measuringDelay = 250
+        
+        const durationString = "(" + ((initialDelay + measuringDelay * (numberOfSamples - 1)) * 0.001).integerValue + "s)"
+        CBDialogViewShower.showActionIndicatorDialog(
+            "Cal " + millibars + " mbar. Port " + this.port + ". " +
+            durationString
+        )
         
         await SocketClient.SetPressureOnDeviceAndPort({
             devicePath: this.deviceObject.port.path,
@@ -462,14 +631,15 @@ class PressureView extends UIView {
             pressureInMillibars: millibars
         })
         
-        await delay(5250)
+        await delay(initialDelay)
         
         for (let i = 0; i < numberOfSamples; i++) {
-            
-            CBDialogViewShower.showActionIndicatorDialog("Cal " + millibars + " mbar. Port " + this.port + " " + (i + 1))
+            CBDialogViewShower.showActionIndicatorDialog(
+                "Cal " + millibars + " mbar. Port " + this.port + " " + (i + 1) + durationString
+            )
             const pressureValue = await this.updatePressure(NO)
             pressures.push(pressureValue)
-            await delay(250)
+            await delay(measuringDelay)
             
         }
         
@@ -511,26 +681,16 @@ class PressureView extends UIView {
         
         wrapInNil(this._descriptorObject).updateDate = Date.now()
         
-        this.titleLabel.text = new Date(FIRST(
-                wrapInNil(this._descriptorObject).date,
-                wrapInNil(this._descriptorObject).updateDate
-            )).dateString +
-            " (updated at " + new Date(FIRST(wrapInNil(this._descriptorObject).updateDate, null)).dateString + ")" +
-            " " + this.deviceObject.port.path
-        
         this.inputTextArea.invalidateSizeCache()
         
         const deviceNames = CBCore.sharedInstance.deviceNames
-        deviceNames[this.deviceTextField.text] = this.inputTextArea.text
+        deviceNames[this.deviceLabel.text] = this.inputTextArea.text
         CBCore.sharedInstance.deviceNames = deviceNames
         
         this.updatePressure().then(nil)
         
     }
     
-    closeView() {
-        // Close the view
-    }
     
     wasAddedToViewTree() {
         super.wasAddedToViewTree()
@@ -544,90 +704,59 @@ class PressureView extends UIView {
         
         const padding = RootViewController.paddingLength
         const labelHeight = padding * 1.25
-        const bounds = this.bounds
+        const bounds = this.bounds.rectangleWithInset(2)
         
-        this.setPaddings(0, 0, padding, 0)
-        
-        this.titleLabel.frame = bounds //.rectangleWithInsets(padding, padding, 0, padding)
-            .rectangleWithHeight(this.titleLabel.intrinsicContentHeight(bounds.width - padding * 2 * 0))
-        
-        this.closeButton.frame = this.titleLabel.frame.rectangleWithWidth(150, 1)
+        //this.setPaddings(0, 0, padding, 0)
+        this.setBorder()
         
         this.inputTextArea.setBorder(0, 1, UIColor.lightGreyColor)
         this.inputTextArea.setPaddings(10, 10)
         
         // This is so that we can find the correct height properly
         //this.inputTextArea.setMinSizes(0)
-        this.inputTextArea.viewHTMLElement.className = this.inputTextArea.viewHTMLElement.className +
-            " ck ck-content ck-editor__editable ck-rounded-corners ck-editor__editable_inline"
-        this.inputTextArea.viewHTMLElement.querySelectorAll("figure.image").forEach(
-            value => value.className = value.className + " ck-widget"
-        )
+        // this.inputTextArea.viewHTMLElement.className = this.inputTextArea.viewHTMLElement.className +
+        //     " ck ck-content ck-editor__editable ck-rounded-corners ck-editor__editable_inline"
+        // this.inputTextArea.viewHTMLElement.querySelectorAll("figure.image").forEach(
+        //     value => value.className = value.className + " ck-widget"
+        // )
         
-        
-        // Performing unchecked layout because the editor changes the actual frame
-        this.inputTextArea.setFrame(
-            this.titleLabel.frame.rectangleForNextRow(
-                padding * 0.25,
-                [this.inputTextArea.intrinsicContentHeight(this.titleLabel.frame.width) + 5, labelHeight * 2].max()
-            ).performFunctionWithSelf(self => {
-                self.width = self.width * 0.5 - 20
-                return self
-            }),
-            0,
-            YES
-        )
-        
-        //this.inputTextArea.setMinSizes(this.inputTextArea.frame.height)
-        
-        
-        this.deviceTextField.frame = this.inputTextArea.frame //.rectangleForNextRow(padding, labelHeight * 2)
-            .rectangleForNextColumn(padding * 2)
+        bounds.rectangleWithHeight([this.inputTextArea.intrinsicContentHeight(bounds.width) + 5, labelHeight].max())
+            .distributeViewsEquallyAlongWidth([this.inputTextArea, this.deviceLabel], 0)
         
         this.pressureLabel.frame = this.inputTextArea.frame.rectangleForNextRow(padding, 50)
             .rectangleWithWidth(bounds.width * 0.5)
         
-        this.pressureTargetView.frame = this.deviceTextField.frame.rectangleForNextRow(padding, 50)
+        this.pressureTargetView.frame = this.deviceLabel.frame.rectangleForNextRow(padding, 50)
             .rectangleWithWidth(bounds.width * 0.5, 1)
         
-        this.pressureLabel.frame.rectangleForNextRow(padding)
+        this.pressureLabel.frame.rectangleForNextRow(padding * 0.5, labelHeight)
             .rectangleWithWidth(bounds.width)
             .distributeViewsAlongWidth(
                 [
                     this.zeroingButton,
                     this.zeroADCOffsetCalibrationButton,
                     this.scanCalibrationButton,
+                    this.calibrationChartButton,
                     this.informationLabel
                 ],
                 1,
                 padding,
-                [200, 200, 200, nil]
+                [120, 200, 200, 100, nil]
             )
         
         
         this.previousWidth = bounds.width
         
-        // this.inputTextArea.frame = this.titleLabel.frame.rectangleForNextRow(
-        //     padding * 0.25,
-        //     this.inputTextArea.intrinsicContentHeight(this.titleLabel.frame.width) + 5
-        // )
+        this.chartView.frame = this.zeroingButton.frame.rectangleForNextRow(
+            padding,
+            (bounds.width * 2.5 / 3.5) * 0.5
+        ).rectangleWithX(padding).rectangleWithWidth(bounds.width - padding * 2)
+        //.rectangleWithInsets(padding * 5 * 0, padding * 5, 0, 0)
+        //.rectangleByAddingX(-padding)
         
-        // this.chartView.frame = this.chartView.frame.rectangleWithHeightRelativeToWidth(0.5)
-        // //     this.resultsLabel.frame.rectangleForNextRow(
-        // //     padding,
-        // //     this.inputTextArea.frame.width * 0.5
-        // // )
-        // //.rectangleWithInsets(padding * 5 * 0, padding * 5, 0, 0)
-        // //.rectangleByAddingX(-padding)
-        //
-        // //this.chartView.setPadding(padding);
-        //
-        // this.chartView.setMaxSizes(this.chartView.frame.height, this.chartView.frame.width)
-        //
-        // this.resultsLabel.frame = this.chartView.frame.rectangleForNextRow(
-        //     padding,
-        //     this.resultsLabel.intrinsicContentHeight(this.chartView.frame.width - padding * 2)
-        // ).rectangleWithWidth(this.chartView.frame.width - padding * 2, 0.5)
+        //this.chartView.setPadding(padding);
+        
+        this.chartView.setMaxSizes(this.chartView.frame.height, this.chartView.frame.width)
         
         
     }
@@ -640,14 +769,14 @@ class PressureView extends UIView {
         
         var chartHeight = (constrainingWidth * 2.5 / 3.5) * 0.5
         
-        var result = padding + this.titleLabel.intrinsicContentHeight(constrainingWidth) + padding * 0.25 +
-            this.inputTextArea.intrinsicContentHeight(constrainingWidth) + padding + labelHeight * 2 + padding + 50 + padding + labelHeight * 2
+        var result = padding +
+            this.inputTextArea.intrinsicContentHeight(constrainingWidth) + padding + labelHeight + padding + labelHeight
         
-        // if (IS_NOT(this.chartView.hidden)) {
-        //
-        //     result = result + padding + (constrainingWidth - padding * 2) * 0.5 + padding + labelHeight * 2
-        //
-        // }
+        if (IS_NOT(this.chartView.hidden)) {
+            
+            result = result + padding + chartHeight
+            
+        }
         
         return result
         
@@ -658,6 +787,155 @@ class PressureView extends UIView {
 }
 
 
+//@ts-ignore
+Chart.Interaction.modes["interpolate"] = function (chart, e, options) {
+
+    // This function has a separate license
+
+    // MIT License
+    //
+    // Copyright (c) 2018 Abel Heinsbroek
+    //
+    // Permission is hereby granted, free of charge, to any person obtaining a copy
+    // of this software and associated documentation files (the "Software"), to deal
+    // in the Software without restriction, including without limitation the rights
+    // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    // copies of the Software, and to permit persons to whom the Software is
+    // furnished to do so, subject to the following conditions:
+    //
+    //     The above copyright notice and this permission notice shall be included in all
+    // copies or substantial portions of the Software.
+    //
+    //     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    //     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    //     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    // SOFTWARE.
+
+    var items = []
+
+    for (var datasetIndex = 0; datasetIndex < chart.data.datasets.length; datasetIndex++) {
+
+
+        // check for interpolate setting
+        if (!chart.data.datasets[datasetIndex].interpolate) {
+            continue
+        }
+
+        var meta = chart.getDatasetMeta(datasetIndex)
+        // do not interpolate hidden charts
+        if (meta.hidden) {
+            continue
+        }
+
+
+        var xScale = chart.scales[meta.xAxisID]
+        var yScale = chart.scales[meta.yAxisID]
+
+        var xValue = xScale.getValueForPixel(e.x)
+
+
+        var data = chart.data.datasets[datasetIndex].data
+
+        var index = data.findIndex(function (o) {
+            return o.x >= xValue
+        })
+
+        if (index === -1) {
+            continue
+        }
+
+
+        // linear interpolate value
+        var prev = data[index - 1]
+        var next = data[index]
+
+        if (prev && next) {
+            var slope = (next.y - prev.y) / (next.x - prev.x)
+            var interpolatedValue = prev.y + (xValue - prev.x) * slope
+        }
+
+        if (chart.data.datasets[datasetIndex].steppedLine && prev) {
+            interpolatedValue = prev.y
+        }
+
+        if (isNaN(interpolatedValue)) {
+            continue
+        }
+
+        var yPosition = yScale.getPixelForValue(interpolatedValue)
+
+        // do not interpolate values outside of the axis limits
+        if (isNaN(yPosition)) {
+            continue
+        }
+
+        // create a 'fake' event point
+
+        var fakePoint = {
+
+            value: interpolatedValue,
+            xValue: xValue,
+
+            tooltipPosition: function () {
+                return this._model
+            },
+            hasValue: function () {
+                return true
+            },
+            _model: {
+                x: e.x,
+                y: yPosition
+            },
+            _datasetIndex: datasetIndex,
+            _index: items.length,
+            _xScale: {
+                getLabelForIndex: function (indx) {
+
+                    let xValue: number = items[indx].xValue
+
+                    xValue = xValue.toPrecision(5) as any
+
+                    return xValue
+
+                }
+            },
+            _yScale: {
+                getLabelForIndex: function (indx) {
+
+                    let value = items[indx].value.toPrecision(5)
+
+                    return value
+
+                }
+            },
+            _chart: chart
+
+        }
+
+        items.push(fakePoint)
+
+    }
+
+
+    // add other, not interpolated, items
+    // @ts-ignore
+    var xItems = Chart.Interaction.modes.x(chart, e, options)
+
+    xItems.forEach((item, index, array) => {
+
+
+        if (!chart.data.datasets[item._datasetIndex].interpolate) {
+            items.push(item)
+        }
+
+    })
+
+
+    return items
+}
 
 
 

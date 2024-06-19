@@ -223,6 +223,25 @@ class PressureView extends UIView {
                 
                 let pressureInMillibars = this.pressureTargetView.integerValue + this.zeroingFactor
                 
+                const achievablePressureInMillibars = [
+                    [
+                        pressureInMillibars,
+                        this.minAchievablePressureInMillibars
+                    ].max(),
+                    this.maxAchievablePressureInMillibars
+                ].min()
+                
+                if (achievablePressureInMillibars != pressureInMillibars) {
+                    
+                    this.pressureTargetView.textField.backgroundColor = UIColor.redColor
+                    
+                    return
+                    
+                }
+                
+                this.pressureTargetView.textField.backgroundColor = UIColor.whiteColor
+                
+                
                 this._currentTarget = pressureInMillibars
                 
                 if (this.calibrationValues?.length) {
@@ -232,7 +251,7 @@ class PressureView extends UIView {
                             { x: 0, y: 0 },
                             { x: 1, y: 1 }
                         ],
-                        pressureInMillibars - (this.zeroADCOffset ?? 0)
+                        achievablePressureInMillibars - (this.zeroADCOffset ?? 0)
                     )
                     
                 }
@@ -476,12 +495,54 @@ class PressureView extends UIView {
     }
     
     
+    get maxAchievablePressureInMillibars() {
+        
+        if (!this.calibrationPoints.length) {
+            return 1000
+        }
+        
+        return this.calibrationPoints.map(
+            point => point.x
+        ).max()
+        
+    }
+    
+    get minAchievablePressureInMillibars() {
+        
+        if (!this.calibrationPoints.length) {
+            return -1000
+        }
+        
+        return this.calibrationPoints.map(
+            point => point.x
+        ).min()
+        
+    }
+    
     private updateInformationLabelText() {
         
         this.informationLabel.text = "Target: " + this._currentTarget + " mbar, " +
             "Zeroing factor: " + this.zeroingFactor + " mbar, " +
             "Requested as: " + (this._lastSentRequestMillibars?.integerValue ?? "(-)") + " mbar " + "ADCOffset: " + this.zeroADCOffset.toFixed(
                 2) + " mbar"
+        
+    }
+    
+    private updateMinMax() {
+        
+        this.pressureTargetView.minValue = this.minAchievablePressureInMillibars
+        this.pressureTargetView.maxValue = this.maxAchievablePressureInMillibars
+        
+        this.pressureTargetView.minusButton.titleLabel.text = "" +
+            "<span style='font-weight: lighter; color: #9e9ba7; font-style: italic; font-size: xx-small;'>(" +
+            this.pressureTargetView.minValue.integerValue +
+            ")</span> " +
+            "<span> - </span>"
+        this.pressureTargetView.plusButton.titleLabel.text = "<span> + </span> " +
+            "<span style='font-weight: lighter; color: #9e9ba7; font-style: italic; font-size: xx-small;'>(" +
+            this.pressureTargetView.maxValue.integerValue +
+            ")</span>"
+        
         
     }
     
@@ -550,6 +611,7 @@ class PressureView extends UIView {
         }
         
         this.updateInformationLabelText()
+        this.updateMinMax()
         
         return pressure
         
@@ -592,15 +654,11 @@ class PressureView extends UIView {
         console.log(pressures)
         CBDialogViewShower.hideActionIndicatorDialog()
         
-        // Set pressure target to zero to avoid unnecessary flow
-        await SocketClient.SetPressureOnDeviceAndPort({
-            devicePath: this.deviceObject.port.path,
-            port: this.port,
-            pressureInMillibars: 0
-        })
-        this.pressureTargetView.integerValue = 0
-        
         this.calibrationValues = pressures
+        
+        // Set pressure target to zero to avoid unnecessary flow
+        this.pressureTargetView.integerValue = 0
+        this.pressureTargetView.textField.sendControlEventForKey(UITextField.controlEvent.EnterDown, nil)
         
         console.log("Calibration points", this.calibrationPoints)
         
@@ -789,9 +847,9 @@ class PressureView extends UIView {
 
 //@ts-ignore
 Chart.Interaction.modes["interpolate"] = function (chart, e, options) {
-
+    
     // This function has a separate license
-
+    
     // MIT License
     //
     // Copyright (c) 2018 Abel Heinsbroek
@@ -813,72 +871,72 @@ Chart.Interaction.modes["interpolate"] = function (chart, e, options) {
     // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     //     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     // SOFTWARE.
-
+    
     var items = []
-
+    
     for (var datasetIndex = 0; datasetIndex < chart.data.datasets.length; datasetIndex++) {
-
-
+        
+        
         // check for interpolate setting
         if (!chart.data.datasets[datasetIndex].interpolate) {
             continue
         }
-
+        
         var meta = chart.getDatasetMeta(datasetIndex)
         // do not interpolate hidden charts
         if (meta.hidden) {
             continue
         }
-
-
+        
+        
         var xScale = chart.scales[meta.xAxisID]
         var yScale = chart.scales[meta.yAxisID]
-
+        
         var xValue = xScale.getValueForPixel(e.x)
-
-
+        
+        
         var data = chart.data.datasets[datasetIndex].data
-
+        
         var index = data.findIndex(function (o) {
             return o.x >= xValue
         })
-
+        
         if (index === -1) {
             continue
         }
-
-
+        
+        
         // linear interpolate value
         var prev = data[index - 1]
         var next = data[index]
-
+        
         if (prev && next) {
             var slope = (next.y - prev.y) / (next.x - prev.x)
             var interpolatedValue = prev.y + (xValue - prev.x) * slope
         }
-
+        
         if (chart.data.datasets[datasetIndex].steppedLine && prev) {
             interpolatedValue = prev.y
         }
-
+        
         if (isNaN(interpolatedValue)) {
             continue
         }
-
+        
         var yPosition = yScale.getPixelForValue(interpolatedValue)
-
+        
         // do not interpolate values outside of the axis limits
         if (isNaN(yPosition)) {
             continue
         }
-
+        
         // create a 'fake' event point
-
+        
         var fakePoint = {
-
+            
             value: interpolatedValue,
             xValue: xValue,
-
+            
             tooltipPosition: function () {
                 return this._model
             },
@@ -893,47 +951,47 @@ Chart.Interaction.modes["interpolate"] = function (chart, e, options) {
             _index: items.length,
             _xScale: {
                 getLabelForIndex: function (indx) {
-
+                    
                     let xValue: number = items[indx].xValue
-
+                    
                     xValue = xValue.toPrecision(5) as any
-
+                    
                     return xValue
-
+                    
                 }
             },
             _yScale: {
                 getLabelForIndex: function (indx) {
-
+                    
                     let value = items[indx].value.toPrecision(5)
-
+                    
                     return value
-
+                    
                 }
             },
             _chart: chart
-
+            
         }
-
+        
         items.push(fakePoint)
-
+        
     }
-
-
+    
+    
     // add other, not interpolated, items
     // @ts-ignore
     var xItems = Chart.Interaction.modes.x(chart, e, options)
-
+    
     xItems.forEach((item, index, array) => {
-
-
+        
+        
         if (!chart.data.datasets[item._datasetIndex].interpolate) {
             items.push(item)
         }
-
+        
     })
-
-
+    
+    
     return items
 }
 

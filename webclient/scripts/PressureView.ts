@@ -15,6 +15,25 @@ interface PressureCalibrationMeasurementObject {
     averageMillibarsMeasured: number
 }
 
+interface StatisticsObject {
+    
+    A: StatisticsPortObject[]
+    B: StatisticsPortObject[]
+    C: StatisticsPortObject[]
+    D: StatisticsPortObject[]
+    
+}
+
+interface StatisticsPortObject {
+    
+    startingPressure: number
+    targetPressure: number
+    valueReached: number
+    timeTaken: number
+    currentTime: number
+    
+}
+
 
 interface PVPoint {
     x: number;
@@ -52,6 +71,8 @@ class PressureView extends UIView {
     
     chartView: UIView
     chart: any
+    private requestSendTime: number
+    private pressureDuringTargetChange: number
     
     set descriptorObject(descriptorObject: PressureDescriptorObject) {
         
@@ -256,6 +277,8 @@ class PressureView extends UIView {
                     
                 }
                 
+                this.requestSendTime = Date.now()
+                this.pressureDuringTargetChange = this.pressureLabel.text.numericalValue
                 
                 console.log("Requested pressure from user is " + this.pressureTargetView.integerValue + " mbar + zeroingValue of " + this.zeroingFactor + " mbar = " + (this.pressureTargetView.integerValue + this.zeroingFactor) + " mbar.")
                 console.log("sending SETPRESSURE command with " + pressureInMillibars + " mbar.")
@@ -495,6 +518,9 @@ class PressureView extends UIView {
     }
     
     
+    
+    
+    
     get maxAchievablePressureInMillibars() {
         
         if (!this.calibrationPoints.length) {
@@ -602,6 +628,35 @@ class PressureView extends UIView {
             pressure + this.zeroADCOffset - this.zeroingFactor // + this.deviceObject.minPressureInMillibars
         ).toPrecision(5)
         
+        // Measure time if the pressure has reached or exceeded the target value
+        
+        if (Math.abs(this.pressureLabel.text.numericalValue - this.pressureDuringTargetChange) >= Math.abs(this.pressureTarget - this.pressureDuringTargetChange)) {
+            
+            console.log(" ")
+            const timeTaken = ((Date.now() - this.requestSendTime) * 0.001)
+            console.log("Pressure reached in " + timeTaken.toFixed(1) + " seconds.")
+            console.log("Starting pressure was " + this.pressureDuringTargetChange + " mbar.")
+            console.log("Target pressure was " + this._currentTarget + " mbar.")
+            console.log("Value reached was " + this.pressureLabel.text.numericalValue + " mbar.")
+            console.log(" ")
+            
+            const statisticsValues = this.statisticsValues
+            
+            statisticsValues[this.port].push({
+                
+                startingPressure: this.pressureDuringTargetChange,
+                targetPressure: this._currentTarget,
+                valueReached: this.pressureLabel.text.numericalValue,
+                timeTaken: timeTaken,
+                currentTime: Date.now()
+                
+            })
+            
+            this.statisticsValues = statisticsValues
+            
+            
+        }
+        
         if (!this.isUpdatingPressureScheduled && scheduleUpdate) {
             setTimeout(() => {
                 this.isUpdatingPressureScheduled = NO
@@ -615,6 +670,14 @@ class PressureView extends UIView {
         
         return pressure
         
+    }
+    
+    set statisticsValues(value: StatisticsObject) {
+        localStorage.setItem("_statisticsValues", JSON.stringify(value))
+    }
+    
+    get statisticsValues(): StatisticsObject | undefined {
+        return JSON.parse(localStorage.getItem("_statisticsValues") ?? "{ A: [], B: [], C: [], D: [] }");
     }
     
     async measureADCOffset(showDialog = YES) {

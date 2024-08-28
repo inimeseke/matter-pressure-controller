@@ -640,33 +640,35 @@ class PressureView extends UIView {
         this.slidingWindows.push([{ time: currentTime, pressureValue: pressureValue }])
         
         let isPressureReached = NO
+        let timeTakenToReachTarget = -1
         
         if ((currentTime - this.slidingWindows.lastElement.firstElement.time) >= (this.slidingWindowLengthInSeconds * 1000)) {
             
             const chunkLength = this.slidingWindowChunkLengthInSeconds * 1000
-            
             const windowDatapoints = this.slidingWindows.pop()
             const firstChunkData = windowDatapoints.filter(
                 dataPoint => windowDatapoints.firstElement.time + chunkLength >= dataPoint.time
             )
-            const firstChunkAverage = firstChunkData.everyElement.pressureValue.UI_elementValues.average()
             
+            const firstChunkAverage = firstChunkData.everyElement.pressureValue.UI_elementValues.average()
             const newestChunkData = windowDatapoints.filter(
                 dataPoint => dataPoint.time >= windowDatapoints.lastElement.time - chunkLength
             )
             const newestChunkAverage = newestChunkData.everyElement.pressureValue.UI_elementValues.average()
+            
             isPressureReached = ((newestChunkAverage - firstChunkAverage) > 0.1)
-        
+            if (isPressureReached) {
+                timeTakenToReachTarget = (windowDatapoints.firstElement.time - this.requestSendTime) / 1000
+            }
+            
         }
         
         // Measure time if the pressure has reached or exceeded the target value
         if (this.recordPressureReachingTime && isPressureReached) {
             
             this.recordPressureReachingTime = NO
-            
             console.log(" ")
-            const timeTaken = ((Date.now() - this.requestSendTime) * 0.001)
-            console.log("Port " + this.port + " pressure reached in " + timeTaken.toFixed(1) + " seconds.")
+            console.log("Port " + this.port + " pressure reached in " + timeTakenToReachTarget.toFixed(1) + " seconds.")
             console.log("Starting pressure was " + this.pressureDuringTargetChange + " mbar.")
             console.log("Target pressure was " + this._currentTarget + " mbar.")
             console.log("Value reached was " + pressureValue + " mbar.")
@@ -679,7 +681,7 @@ class PressureView extends UIView {
                 startingPressure: this.pressureDuringTargetChange,
                 targetPressure: this._currentTarget,
                 valueReached: pressureValue,
-                timeTaken: timeTaken,
+                timeTaken: timeTakenToReachTarget,
                 currentTime: Date.now()
                 
             })

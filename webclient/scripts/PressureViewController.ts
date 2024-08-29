@@ -175,14 +175,16 @@ class PressureViewController extends UIViewController {
                     await this.scanCalibrateAllChannels()
                     
                 }
-            
+                
             }
             
         }
         
         this._ignoreNextDevicesDropdownSelectionChange = YES
         
-        this.devicesDropdown.selectedItemCodes = [pressureDevice?.port?.path]
+        this.devicesDropdown.selectedItemCodes = [pressureDevice?.port?.settings?.path]
+        
+        await this._pressureViews.everyElement.updatePressure()
         
     }
     
@@ -237,7 +239,7 @@ class PressureViewController extends UIViewController {
         
         const classes = { PressureView: PressureView }
         
-        const views = descriptorObjects.map((descriptorObject, index) => {
+        const views: PressureView[] = descriptorObjects.map((descriptorObject, index) => {
             
             descriptorObject.identifier = descriptorObject.identifier || MAKE_ID()
             

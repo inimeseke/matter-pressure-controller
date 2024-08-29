@@ -594,10 +594,10 @@ class PressureView extends UIView {
     }
     
     
-    private async updatePressure(scheduleUpdate = YES) {
+    async updatePressure(scheduleUpdateIfNeeded = YES) {
         
         if (IS_NOT(this.deviceObject) || IS_NOT(this.isMemberOfViewTree)) {
-            //console.log("Update pressure stop " + this.port)
+            console.log("Update pressure stop " + this.port)
             return
         }
         
@@ -613,7 +613,19 @@ class PressureView extends UIView {
             CBSocketClient.completionPolicy.directOnly
         )).result
         
+        const scheduleNextUpdateIfNeeded = () => {
+            if (this.isUpdatingPressureScheduled) {
+                return
+            }
+            setTimeout(() => {
+                this.isUpdatingPressureScheduled = NO
+                this.updatePressure()
+            }, 100)
+            this.isUpdatingPressureScheduled = YES
+        }
+        
         if (IS_NOT(requestResult.pressuresObject)) {
+            scheduleNextUpdateIfNeeded()
             return
         }
         
@@ -636,8 +648,8 @@ class PressureView extends UIView {
         
         const pressureValue = this.pressureLabel.text.numericalValue
         const currentTime = Date.now()
+        this.slidingWindows.push([])
         this.slidingWindows.everyElement.push({ time: currentTime, pressureValue: pressureValue })
-        this.slidingWindows.push([{ time: currentTime, pressureValue: pressureValue }])
         
         let isPressureReached = NO
         let timeTakenToReachTarget = -1
@@ -691,12 +703,8 @@ class PressureView extends UIView {
             
         }
         
-        if (!this.isUpdatingPressureScheduled && scheduleUpdate) {
-            setTimeout(() => {
-                this.isUpdatingPressureScheduled = NO
-                this.updatePressure()
-            }, 100)
-            this.isUpdatingPressureScheduled = YES
+        if (!this.isUpdatingPressureScheduled && scheduleUpdateIfNeeded) {
+            scheduleNextUpdateIfNeeded()
         }
         
         this.updateInformationLabelText()

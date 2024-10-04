@@ -28,9 +28,15 @@ interface StatisticsObject {
 
 interface StatisticsPortObject {
     
+    port: "A" | "B" | "C" | "D"
     startingPressure: number
     targetPressure: number
-    valueReached: number
+    zeroingFactor: number
+    previousStableTargetPressure: number
+    valueReached?: number
+    stabilizationSignal?: { time: number, pressureValue: number }[]
+    stabilizedSignal?: { time: number, pressureValue: number }[]
+    timeoutSignal?: { time: number, pressureValue: number }[]
     timeTaken: number
     currentTime: number
     
@@ -44,6 +50,7 @@ interface PVPoint {
 
 
 class PressureView extends UIView {
+    
     
     inputTextArea: UITextArea
     
@@ -75,10 +82,14 @@ class PressureView extends UIView {
     chart: any
     private requestSendTime: number
     private pressureDuringTargetChange: number
+    private previousStablePressureDuringTargetChange?: number
     private recordPressureReachingTime: boolean
+    stabilizationSignal: { time: number, pressureValue: number }[] = []
     slidingWindows: { time: number, pressureValue: number }[][] = []
     slidingWindowLengthInSeconds = 5
     slidingWindowChunkLengthInSeconds = 1
+    private _isPressureReached: boolean
+    private pressureDidStabilize: (statisticsPortObject: StatisticsPortObject) => void = nil
     
     set descriptorObject(descriptorObject: PressureDescriptorObject) {
         
@@ -268,7 +279,7 @@ class PressureView extends UIView {
                 
                 this.pressureTargetView.textField.backgroundColor = UIColor.whiteColor
                 
-                
+                const previousTarget = this._currentTarget
                 this._currentTarget = pressureInMillibars
                 
                 if (this.calibrationValues?.length) {
@@ -285,7 +296,13 @@ class PressureView extends UIView {
                 
                 this.requestSendTime = Date.now()
                 this.pressureDuringTargetChange = this.pressureLabel.text.numericalValue
+                if (this.isPressureReached) {
+                    this.previousStablePressureDuringTargetChange = previousTarget
+                }
+                this.isPressureReached = NO
                 this.recordPressureReachingTime = YES
+                this.slidingWindows = []
+                this.stabilizationSignal = []
                 
                 console.log("Requested pressure from user is " + this.pressureTargetView.integerValue + " mbar + zeroingValue of " + this.zeroingFactor + " mbar = " + (this.pressureTargetView.integerValue + this.zeroingFactor) + " mbar.")
                 console.log("sending SETPRESSURE command with " + pressureInMillibars + " mbar.")
@@ -625,7 +642,9 @@ class PressureView extends UIView {
         }
         
         if (IS_NOT(requestResult.pressuresObject)) {
-            scheduleNextUpdateIfNeeded()
+            if (scheduleUpdateIfNeeded) {
+                scheduleNextUpdateIfNeeded()
+            }
             return
         }
         
@@ -640,9 +659,16 @@ class PressureView extends UIView {
         const pressure = ((pressureInPoints * this.deviceObject.pressuresObject?.multiplier ?? 0) / maxVoltage) *
             (maxPressureInMillibars - minPressureInMillibars) + minPressureInMillibars
         
-        this.pressureLabel.text = "" + (
+        const newPressureText = "" + (
             pressure + this.zeroADCOffset - this.zeroingFactor // + this.deviceObject.minPressureInMillibars
         ).toPrecision(5)
+        if (newPressureText == this.pressureLabel.text) {
+            if (!this.isUpdatingPressureScheduled && scheduleUpdateIfNeeded) {
+                scheduleNextUpdateIfNeeded()
+            }
+            return
+        }
+        this.pressureLabel.text = newPressureText
         
         // Detect stabilization
         
@@ -651,13 +677,15 @@ class PressureView extends UIView {
         this.slidingWindows.push([])
         this.slidingWindows.everyElement.push({ time: currentTime, pressureValue: pressureValue })
         
-        let isPressureReached = NO
-        let timeTakenToReachTarget = -1
         
-        if ((currentTime - this.slidingWindows.lastElement.firstElement.time) >= (this.slidingWindowLengthInSeconds * 1000)) {
+        let timeTakenToReachTarget = -1
+        let stabilizedSignal: { time: number, pressureValue: number }[]
+        
+        if ((currentTime - this.slidingWindows.firstElement.firstElement.time) >= (this.slidingWindowLengthInSeconds * 1000)) {
             
             const chunkLength = this.slidingWindowChunkLengthInSeconds * 1000
-            const windowDatapoints = this.slidingWindows.pop()
+            const windowDatapoints = this.slidingWindows.shift()
+            this.stabilizationSignal.push(windowDatapoints.firstElement)
             const firstChunkData = windowDatapoints.filter(
                 dataPoint => windowDatapoints.firstElement.time + chunkLength >= dataPoint.time
             )
@@ -668,39 +696,71 @@ class PressureView extends UIView {
             )
             const newestChunkAverage = newestChunkData.everyElement.pressureValue.UI_elementValues.average()
             
-            isPressureReached = ((newestChunkAverage - firstChunkAverage) > 0.1)
-            if (isPressureReached) {
+            const stabilizationThreshold = 0.25
+            //const stabilizationProximityThreshold = 1
+            this.isPressureReached = //(
+                (stabilizationThreshold > Math.abs(newestChunkAverage - firstChunkAverage)) &&
+                (stabilizationThreshold > Math.abs(firstChunkData.firstElement.pressureValue - newestChunkAverage))
+            // &&
+            // (stabilizationProximityThreshold > Math.abs(windowDatapoints.everyElement.pressureValue.UI_elementValues.average() - this.pressureTarget)))
+            if (this.isPressureReached) {
                 timeTakenToReachTarget = (windowDatapoints.firstElement.time - this.requestSendTime) / 1000
+                stabilizedSignal = windowDatapoints
             }
             
         }
         
         // Measure time if the pressure has reached or exceeded the target value
-        if (this.recordPressureReachingTime && isPressureReached) {
+        if (this.recordPressureReachingTime && this._isPressureReached) {
             
             this.recordPressureReachingTime = NO
             console.log(" ")
             console.log("Port " + this.port + " pressure reached in " + timeTakenToReachTarget.toFixed(1) + " seconds.")
             console.log("Starting pressure was " + this.pressureDuringTargetChange + " mbar.")
-            console.log("Target pressure was " + this._currentTarget + " mbar.")
+            console.log(
+                "Previous stable target was " + IF(this.previousStablePressureDuringTargetChange)(() =>
+                    this.previousStablePressureDuringTargetChange - this.zeroingFactor
+                ).ELSE(RETURNER(
+                    undefined
+                )) + " mbar."
+            )
+            console.log("Target pressure was " + (this._currentTarget - this.zeroingFactor) + " mbar.")
             console.log("Value reached was " + pressureValue + " mbar.")
             console.log(" ")
             
             const statisticsValues = this.statisticsValues
             
-            statisticsValues[this.port].push({
+            const statisticsPortObject: StatisticsPortObject = {
                 
+                port: this.port,
                 startingPressure: this.pressureDuringTargetChange,
-                targetPressure: this._currentTarget,
+                targetPressure: this._currentTarget - this.zeroingFactor,
+                zeroingFactor: this.zeroingFactor,
+                previousStableTargetPressure: IF(this.previousStablePressureDuringTargetChange)(() =>
+                    this.previousStablePressureDuringTargetChange - this.zeroingFactor
+                ).ELSE(RETURNER(
+                    undefined
+                )),
                 valueReached: pressureValue,
+                stabilizationSignal: this.stabilizationSignal,
+                stabilizedSignal: stabilizedSignal,
+                // timeoutSignal: this.stabilizationSignal.concat(stabilizedSignal),
                 timeTaken: timeTakenToReachTarget,
                 currentTime: Date.now()
                 
-            })
-            
+            }
+            statisticsValues[this.port].push(statisticsPortObject)
             this.statisticsValues = statisticsValues
             
+            if (this.isPressureReached) {
+                this.pressureDidStabilize(statisticsPortObject)
+                this.stabilizationSignal = []
+            }
             
+        }
+        else if (this._isPressureReached) {
+            this.pressureDidStabilize(null)
+            this.stabilizationSignal = []
         }
         
         if (!this.isUpdatingPressureScheduled && scheduleUpdateIfNeeded) {
@@ -713,6 +773,138 @@ class PressureView extends UIView {
         return pressure
         
     }
+    
+    
+    setPressure(pressure: number) {
+        
+        this.pressureTargetView.textField.text = "" + pressure
+        this.pressureTargetView.textField.sendControlEventForKey(UITextField.controlEvent.TextChange, nil)
+        
+        const result = new Promise<StatisticsPortObject>(resolve =>
+            this.pressureDidStabilize = (statisticsPortObject: StatisticsPortObject) => {
+                if (statisticsPortObject) {
+                    this.pressureDidStabilize = nil
+                    resolve(statisticsPortObject)
+                }
+            }
+        )
+        
+        return result
+        
+    }
+    
+    async measureSetPressureTimes(descriptors: {
+        fromPressure: number,
+        toPressure: number,
+        numberOfRepeats: number
+    }[]) {
+        
+        const result: StatisticsPortObject[] = []
+        
+        for (let i = 0; i < descriptors.length; i++) {
+            
+            const descriptor = descriptors[i]
+            
+            for (let j = 0; j < descriptor.numberOfRepeats; j++) {
+                
+                console.log(
+                    "           Starting fromPressure " + descriptor.fromPressure +
+                    " toPressure " + descriptor.toPressure +
+                    " loop " + (j + 1) +
+                    " of " + descriptor.numberOfRepeats +
+                    " on port " + this.port + "."
+                )
+                
+                await this.setPressureWithTimeout(descriptor.fromPressure)
+                //await delay(250)
+                
+                const StatisticsPortObject = await this.setPressureWithTimeout(descriptor.toPressure)
+                if (StatisticsPortObject) {
+                    result.push(StatisticsPortObject)
+                }
+                
+                //await delay(250)
+                
+            }
+            
+        }
+        
+        this.setPressureWithTimeout(0).then(nil)
+        
+        
+        return result
+        
+    }
+    
+    
+    private async setPressureWithTimeout(
+        pressureInMillibars: number,
+        timeoutInSeconds: number = 25
+    ) {
+        
+        async function delayAndRunFunction(ms: number, functionToRun: () => void): Promise<void> {
+            return new Promise(resolve => setTimeout(resolve, ms))
+        }
+        
+        return await Promise.race([
+            this.setPressure(pressureInMillibars),
+            delayAndRunFunction(
+                timeoutInSeconds * 1000,
+                () => {
+                    const message = "Timeout of " + timeoutInSeconds + " seconds reached while trying to set a pressure of " +
+                        pressureInMillibars + " on port " + this.port + "."
+                    console.log(message)
+                    
+                    const statisticsValues = this.statisticsValues
+                    
+                    const statisticsPortObject: StatisticsPortObject = {
+                        
+                        port: this.port,
+                        startingPressure: this.pressureDuringTargetChange,
+                        targetPressure: this._currentTarget - this.zeroingFactor,
+                        zeroingFactor: this.zeroingFactor,
+                        previousStableTargetPressure: IF(this.previousStablePressureDuringTargetChange)(() =>
+                            this.previousStablePressureDuringTargetChange - this.zeroingFactor
+                        ).ELSE(RETURNER(
+                            undefined
+                        )),
+                        // valueReached: this.slidingWindows.lastElement.lastElement.pressureValue,
+                        timeoutSignal: this.stabilizationSignal.concat(this.slidingWindows.firstElement),
+                        timeTaken: timeoutInSeconds * 1000,
+                        currentTime: Date.now()
+                        
+                    }
+                    statisticsValues[this.port].push(statisticsPortObject)
+                    this.statisticsValues = statisticsValues
+                    
+                    CBDialogViewShower.alert(message)
+                }
+            )
+        ])
+        
+    }
+    
+    get isPressureReached(): boolean {
+        return this._isPressureReached
+    }
+    
+    set isPressureReached(isPressureReached: boolean) {
+        
+        this._isPressureReached = isPressureReached
+        
+        this.pressureLabel.textColor = IF(isPressureReached)(() =>
+            new UIColor("rgb(28,182,28)")
+        ).ELSE(() =>
+            new UIColor("rgb(182, 182, 58)")
+        )
+        this.pressureLabel.style.fontWeight = IF(isPressureReached)(() =>
+            "bold"
+        ).ELSE(() =>
+            ""
+        )
+        
+    }
+    
     
     set statisticsValues(value: StatisticsObject) {
         localStorage.setItem("_statisticsValues", JSON.stringify(value))

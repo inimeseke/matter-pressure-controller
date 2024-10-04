@@ -189,6 +189,49 @@ class PressureViewController extends UIViewController {
     }
     
     
+    async measureSetPressureTimes(
+        descriptors: {
+            fromPressure: number,
+            toPressure: number,
+            numberOfRepeats: number
+        }[],
+        pauseAndAlertForEachPort = NO,
+        portIndices = [0, 1, 2, 3]
+    ) {
+        
+        const result: StatisticsPortObject[][] = []
+        
+        for (let i = 0; i < this._pressureViews.length; i++) {
+            
+            const pressureView = this._pressureViews[i]
+            
+            if (!portIndices.contains(i)) {
+                
+                continue;
+                
+            }
+            
+            if (pauseAndAlertForEachPort) {
+                
+                await new Promise(resolve =>
+                    CBDialogViewShower.alert(
+                        "Port " + pressureView.port + " scan is starting.",
+                        () => resolve(null)
+                    )
+                )
+                
+            }
+            
+            result.push(await pressureView.measureSetPressureTimes(descriptors))
+            
+        }
+        
+        CBDialogViewShower.alert("Port pressure set time scan finished.")
+        
+        return result
+        
+    }
+    
     async calibrateZeroADCOffsets() {
         for (let i = 0; i < this._pressureViews.length; i++) {
             const pressureView = this._pressureViews[i]

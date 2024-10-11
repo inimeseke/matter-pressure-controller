@@ -666,7 +666,7 @@ class PressureView extends UIView {
             if (!this.isUpdatingPressureScheduled && scheduleUpdateIfNeeded) {
                 scheduleNextUpdateIfNeeded()
             }
-            return
+            return pressure
         }
         this.pressureLabel.text = newPressureText
         
@@ -1025,7 +1025,10 @@ class PressureView extends UIView {
         
         // If x is greater than the last point, extrapolate using the last two points
         if (i === points.length) {
-            return points[points.length - 1].y + ((points[points.length - 1].y - points[points.length - 2].y) / (points[points.length - 1].x - points[points.length - 2].x)) * (x - points[points.length - 1].x)
+            return points[points.length - 1].y + (
+                (points[points.length - 1].y - points[points.length - 2].y) / 
+                (points[points.length - 1].x - points[points.length - 2].x)
+            ) * (x - points[points.length - 1].x)
         }
         
         // Otherwise, interpolate using the two points that x lies between
